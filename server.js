@@ -27,10 +27,12 @@ async function getBrowser() {
         "--disable-dev-shm-usage",
         "--disable-gpu",
         "--disable-blink-features=AutomationControlled",
-        "--single-process", // ahorra RAM en free tier (512MB)
+        "--single-process",
         "--no-zygote",
         "--disable-extensions",
         "--disable-background-networking",
+        "--disable-features=IsolateOrigins,site-per-process",
+        "--lang=es-AR",
       ],
     })
     .then((b) => {
@@ -78,21 +80,53 @@ app.post("/scrape", async (req, res) => {
       extraHTTPHeaders: { "Accept-Language": "es-AR,es;q=0.9" },
       bypassCSP: true,
     });
+    // Stealth init script — esconde rastros de Playwright para evadir Datadome y otros anti-bot
+    await ctx.addInitScript(() => {
+      // Esconder webdriver
+      Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+      // Spoof permissions API
+      const originalQuery = window.navigator.permissions?.query;
+      if (originalQuery) {
+        window.navigator.permissions.query = (params) =>
+          params.name === "notifications"
+            ? Promise.resolve({ state: Notification.permission })
+            : originalQuery(params);
+      }
+      // Spoof chrome runtime
+      window.chrome = { runtime: {}, loadTimes: () => {}, csi: () => {} };
+      // Plugins fake
+      Object.defineProperty(navigator, "plugins", {
+        get: () => [{ name: "Chrome PDF Plugin" }, { name: "Native Client" }],
+      });
+      // Languages
+      Object.defineProperty(navigator, "languages", { get: () => ["es-AR", "es", "en"] });
+      // Hardware concurrency
+      Object.defineProperty(navigator, "hardwareConcurrency", { get: () => 8 });
+      // Device memory
+      Object.defineProperty(navigator, "deviceMemory", { get: () => 8 });
+    });
+
     const page = await ctx.newPage();
 
-    // Bloquear assets pesados para acelerar y ahorrar RAM
+    // Bloquear solo imágenes/media para ahorrar (no CSS, lo necesita JS para detectar)
     await page.route("**/*", (route) => {
       const type = route.request().resourceType();
-      if (["image", "media", "font", "stylesheet"].includes(type)) return route.abort();
+      if (["image", "media", "font"].includes(type)) return route.abort();
       return route.continue();
     });
 
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 35000 });
     if (waitFor) {
       try { await page.waitForSelector(waitFor, { timeout: 5000 }); } catch {}
     }
-    // Pequeño sleep para hidratación de JS
-    await page.waitForTimeout(1200);
+    // Esperar a que se hidrate JS y/o pase el challenge de Datadome
+    await page.waitForTimeout(4000);
+    // Si todavía dice "Un momento" (Datadome), esperar más
+    const earlyTitle = await page.title().catch(() => "");
+    if (/un momento|just a moment|please wait/i.test(earlyTitle)) {
+      console.log("Detected anti-bot challenge, waiting more...");
+      await page.waitForTimeout(6000);
+    }
 
     const html = await page.content();
     const finalUrl = page.url();
