@@ -1,0 +1,15 @@
+# Config para deploy automático en Render. Render lo detecta y te ofrece deployar con un click.
+services:
+  - type: web
+    name: inmobiliaria-scraper
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: SCRAPER_TOKEN
+        generateValue: true   # Render genera un token random seguro
+      - key: NODE_ENV
+        value: production
+    healthCheckPath: /healthz
+    autoDeploy: true

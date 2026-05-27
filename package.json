@@ -1,0 +1,16 @@
+{
+  "name": "inmobiliaria-scraper",
+  "version": "1.0.0",
+  "description": "Microservicio Playwright para scrapear ML y Zonaprop bypaseando anti-bot",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "playwright": "^1.48.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
